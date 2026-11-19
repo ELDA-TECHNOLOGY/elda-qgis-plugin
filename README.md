@@ -14,8 +14,7 @@ It is in beta and flagged experimental in QGIS.
 - Publish vector layers: choose the destination folder and who can see the layer, then follow the upload and the processing.
 - Detect a layer with the same name already present in the destination folder, and either replace its content or create a new layer.
 - Optionally carry the QGIS symbology over: single symbol, categorized, graduated and simple labels.
-
-Raster publishing is in progress.
+- Publish GeoTIFF rasters (terrain models, orthophotos); each file is checked before it is sent, with the fix spelled out when ELDA would refuse it.
 
 ## Install
 
