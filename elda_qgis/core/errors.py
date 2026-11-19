@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from .i18n import tr
+
 
 class EldaError(Exception):
     default_fr = "Une erreur est survenue."
 
     def __init__(self, message_fr: str = ""):
-        self.message_fr = message_fr or self.default_fr
+        # translated here, when the error is raised: a class attribute is read before the language is known
+        self.message_fr = message_fr or tr(self.default_fr)
         super().__init__(self.message_fr)
 
 

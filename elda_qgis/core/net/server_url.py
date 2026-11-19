@@ -5,6 +5,7 @@ import re
 from urllib.parse import urlsplit
 
 from ..errors import UnsafeUrl
+from ..i18n import tr
 
 KNOWN = {
     "https://data.eldatechnology.fr": "Production",
@@ -68,7 +69,7 @@ def is_loopback(url: str) -> bool:
 
 def check_storage(url: str, api_is_loopback: bool) -> None:
     """An upload address given by the server: https only, no credentials; this machine only in local development."""
-    refused = UnsafeUrl("Adresse de stockage refusée par sécurité.")
+    refused = UnsafeUrl(tr("Adresse de stockage refusée par sécurité."))
     if not isinstance(url, str) or "\\" in url or any(c.isspace() for c in url):
         raise refused
     try:

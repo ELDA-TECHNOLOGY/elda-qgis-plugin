@@ -243,7 +243,7 @@ def summary(rows: List[Row]) -> str:
             parts.append(make(count(code)))
     lines = [", ".join(parts) + "."]
     # the reason of each problem is shown in full, not only as a tooltip
-    lines += ["%s : %s" % (r.name, r.message) for r in rows if r.status in _FINISHED and r.message]
+    lines += [texts.reason_line(r.name, r.message) for r in rows if r.status in _FINISHED and r.message]
     return "\n".join(lines)
 
 

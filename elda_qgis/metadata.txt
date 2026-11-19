@@ -2,7 +2,7 @@
 name=ELDA
 qgisMinimumVersion=3.34
 description=Publier des couches QGIS dans ELDA
-version=0.7.6
+version=0.8.0
 author=ELDA Technology
 email=contact@eldatechnology.fr
 icon=resources/icon.svg

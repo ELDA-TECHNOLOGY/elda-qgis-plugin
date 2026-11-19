@@ -13,6 +13,7 @@ from qgis.core import (
 )
 
 from ..core.net.redact import without_paths
+from ..core.i18n import tr
 from . import log
 
 LAYER_GONE_FR = "La couche n'existe plus dans le projet."
@@ -89,7 +90,7 @@ def export_layer(
     def failed(*args) -> None:
         reason = without_paths(str(args[1])).strip() if len(args) > 1 else ""
         log.warning("layer export failed: code %s" % (args[0] if args else "?",))
-        settle(on_error, "%s Détail : %s" % (EXPORT_FAILED_FR, reason) if reason else EXPORT_FAILED_FR)
+        settle(on_error, tr("%s Détail : %s") % (EXPORT_FAILED_FR, reason) if reason else EXPORT_FAILED_FR)
 
     task.completed.connect(lambda *args: settle(on_done))
     task.errorOccurred.connect(failed)

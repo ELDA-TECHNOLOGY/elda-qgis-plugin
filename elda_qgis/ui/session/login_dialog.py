@@ -155,7 +155,7 @@ class LoginDialog(QDialog):
             self._login_done(api, account, choice.url, username, password, remember)
 
         worker.run(
-            "ELDA : connexion",
+            texts.TASK_LOGIN,
             lambda: api.login(username, password),
             worker.guarded(self, done),
             self._on_error,

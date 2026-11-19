@@ -166,7 +166,7 @@ class MainDialog(QDialog):
         api = self._api
         self._set_busy(True)
         worker.run(
-            "ELDA : changement de site",
+            texts.TASK_SITE,
             lambda: api.select_site(site_id),
             self._on_account,
             self._on_error,
@@ -184,7 +184,7 @@ class MainDialog(QDialog):
         self._set_busy(True)
         # logout never raises: it clears the session even when the server is unreachable
         done = worker.guarded(self, lambda _result: self._logged_out())
-        worker.run("ELDA : déconnexion", api.logout, done, self._on_error, self._on_finally)
+        worker.run(texts.TASK_LOGOUT, api.logout, done, self._on_error, self._on_finally)
 
     def _logged_out(self) -> None:
         self._api = None
@@ -218,7 +218,7 @@ class MainDialog(QDialog):
             api = self._api
             # a job still winding down needs the session to abort its import on ELDA
             if api is not None and api.is_logged_in and not self._panel.busy:
-                worker.run("ELDA : déconnexion", api.logout, lambda _r: None, lambda _e: None)
+                worker.run(texts.TASK_LOGOUT, api.logout, lambda _r: None, lambda _e: None)
         except Exception as exc:
             log.warning("%s: %s" % (type(exc).__name__, exc))
 

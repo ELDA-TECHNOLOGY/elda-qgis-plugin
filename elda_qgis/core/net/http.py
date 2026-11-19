@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Optional, Protocol
 from ...version import VERSION
 from .redact import scrub
 from ..errors import NetworkError, RequestRefused, ServerError
+from ..i18n import tr
 
 USER_AGENT = "ELDA-QGIS/" + VERSION
 _BACKOFF = (1, 2, 4)
@@ -60,7 +61,7 @@ class Response:
         try:
             return jsonlib.loads(self.body.decode("utf-8"))
         except (ValueError, RecursionError):
-            raise ServerError(self.status, "Réponse inattendue du serveur ELDA.") from None
+            raise ServerError(self.status, tr("Réponse inattendue du serveur ELDA.")) from None
 
 
 class Transport(Protocol):
@@ -110,7 +111,7 @@ class Caller:
                 continue
             status = response.status
             if 300 <= status < 400:
-                raise RequestRefused(status, "Le serveur ELDA a répondu par une redirection inattendue.")
+                raise RequestRefused(status, tr("Le serveur ELDA a répondu par une redirection inattendue."))
             if status == 429 and not last:
                 wait = _retry_after(response)
                 self._sleep(_BACKOFF[attempt] if wait is None else wait)
