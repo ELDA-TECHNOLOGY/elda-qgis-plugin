@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0 (beta)
+
+- The plugin follows the language of QGIS: French, Spanish, and English for any other language.
+- Messages written by the ELDA server itself stay in French.
+
 ## 0.7.6 (beta)
 
 - Publish GeoTIFF rasters: terrain and surface models, colour and infrared orthophotos, with the type chosen per layer.

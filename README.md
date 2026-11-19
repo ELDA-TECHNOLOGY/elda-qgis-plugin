@@ -14,6 +14,7 @@ It is in beta and flagged experimental in QGIS.
 - Publish vector layers: choose the destination folder and who can see the layer, then follow the upload and the processing.
 - Detect a layer with the same name already present in the destination folder, and either replace its content or create a new layer.
 - Optionally carry the QGIS symbology over: single symbol, categorized, graduated and simple labels.
+- Available in French, English and Spanish: the plugin follows the language of QGIS.
 - Publish GeoTIFF rasters (terrain models, orthophotos); each file is checked before it is sent, with the fix spelled out when ELDA would refuse it.
 
 ## Install
@@ -59,6 +60,8 @@ After `make link`, restart QGIS and enable "ELDA" in Plugins > Manage and Instal
         session/       login, tokens, account and rights
         publish/       upload, publishing flow, status polling
         style/         QGIS symbology to ELDA style
+        i18n.py        languages: French is the source, looked up by its wording
+      locales/         English and Spanish wording of every text
       qgis_adapters/   everything that touches QGIS: network, credentials, export, layers
       ui/              windows; their decisions live in pure modules next to them
 
