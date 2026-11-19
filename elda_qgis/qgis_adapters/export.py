@@ -49,8 +49,8 @@ def export_layer(
     if layer.isEditable() and layer.isModified():
         on_error(UNSAVED_FR)
         return None
-    # a table without geometry is fine, a spatial layer with no feature is not
-    if layer.isSpatial() and layer.featureCount() == 0:
+    # an empty file has no geometry type either: QGIS reports it as a table, so the count alone decides
+    if layer.featureCount() == 0:
         on_error(EMPTY_LAYER_FR)
         return None
 
