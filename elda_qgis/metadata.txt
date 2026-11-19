@@ -1,9 +1,17 @@
 [general]
 name=ELDA
 qgisMinimumVersion=3.34
-description=Publier des couches QGIS dans ELDA
-version=0.8.0
+description=Publish QGIS layers to the ELDA platform
+about=Publish vector layers and GeoTIFF rasters from a QGIS project to the ELDA platform (ski resort management): choose the destination folder and who can see the layer, follow the upload and the processing, replace the content of an existing layer, and optionally carry the QGIS symbology over.
+    The plugin is a client of the ELDA API: it requires an ELDA account and does nothing without one.
+    No external dependency: only Python and QGIS. Available in French, English and Spanish.
+version=0.8.1
 author=ELDA Technology
 email=contact@eldatechnology.fr
+homepage=https://github.com/ELDA-TECHNOLOGY/elda-qgis-plugin#readme
+repository=https://github.com/ELDA-TECHNOLOGY/elda-qgis-plugin
+tracker=https://github.com/ELDA-TECHNOLOGY/elda-qgis-plugin/issues
+category=Web
+tags=elda, publish, upload, vector, raster, geotiff, ski resort
 icon=resources/icon.svg
 experimental=True

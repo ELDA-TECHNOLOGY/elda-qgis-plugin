@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 (beta)
+
+- Metadata and licence file required by the official QGIS plugin repository.
+
 ## 0.8.0 (beta)
 
 - The plugin follows the language of QGIS: French, Spanish, and English for any other language.

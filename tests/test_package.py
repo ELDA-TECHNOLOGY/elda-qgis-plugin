@@ -21,6 +21,7 @@ class PackageTest(unittest.TestCase):
         with zipfile.ZipFile(self.path) as z:
             names = z.namelist()
         self.assertIn("elda_qgis/metadata.txt", names)
+        self.assertIn("elda_qgis/LICENSE", names)
         self.assertIn("elda_qgis/__init__.py", names)
         for required in (
             "elda_qgis/core/session/api.py",
@@ -42,7 +43,8 @@ class PackageTest(unittest.TestCase):
         general = meta["general"]
         self.assertEqual(general["qgisMinimumVersion"], "3.34")
         self.assertEqual(general["version"], VERSION)
-        for key in ("name", "description", "author", "email"):
+        # the last four are required by the official QGIS repository
+        for key in ("name", "description", "author", "email", "about", "repository", "tracker", "homepage"):
             self.assertTrue(general[key])
 
 

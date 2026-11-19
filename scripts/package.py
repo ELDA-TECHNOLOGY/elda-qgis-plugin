@@ -23,6 +23,8 @@ def build(out_dir):
             rel = f.relative_to(PLUGIN)
             if f.is_file() and "__pycache__" not in f.parts and f.suffix != ".pyc" and not any(p.startswith(".") for p in rel.parts):
                 z.write(f, f.relative_to(ROOT).as_posix())
+        # the official QGIS repository expects the licence inside the plugin folder
+        z.write(ROOT / "LICENSE", "elda_qgis/LICENSE")
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     Path(f"{zip_path}.sha256").write_text(f"{digest}  {zip_path.name}\n")
     return str(zip_path)
