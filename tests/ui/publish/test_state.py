@@ -36,11 +36,10 @@ class RowsForTest(unittest.TestCase):
         self.assertFalse(r.selectable)
         self.assertEqual(r.reason, "Votre compte n'a pas le droit de publier des couches vecteur sur ce site.")
 
-    def test_raster_and_other_never_selectable(self):
-        for kind in ("raster", "other"):
-            (r,) = ps.rows_for([L("a", "x", kind, 0)], YES)
-            self.assertFalse(r.selectable)
-            self.assertEqual(r.reason, "Disponible dans une prochaine version")
+    def test_other_kinds_are_never_selectable(self):
+        (r,) = ps.rows_for([L("a", "x", "other", 0)], YES)
+        self.assertFalse(r.selectable)
+        self.assertEqual(r.reason, "Disponible dans une prochaine version")
 
     def test_row_is_frozen(self):
         (r,) = ps.rows_for([L("a", "x", "vector", 1)], YES)

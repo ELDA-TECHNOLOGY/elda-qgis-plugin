@@ -176,3 +176,62 @@ def test_finalize_abort_and_delete_routes():
         ("POST", "gis/raster/abort/77", None),
         ("DELETE", "gis/raster/77", None),
     ]
+
+
+def test_only_the_raster_this_job_created_is_ever_aborted_or_deleted(tmp_path):
+    for script in (dict(raster_status=["failed"]), dict(raster_finalize=[RequestRefused(409, "x")])):
+        gis = Gis(**script)
+        Run(tmp_path, gis).go()
+        touched = {c[1] for c in gis.calls if c[0] in ("raster_abort", "delete_failed_raster")}
+        assert touched == {RID}
+
+
+@pytest.mark.parametrize("status", ["", "pending", "weird"])
+def test_an_unknown_status_keeps_waiting_and_never_deletes(tmp_path, status):
+    gis = Gis(raster_status=[status])
+    out = Run(tmp_path, gis).go()
+    assert out.status == "timeout" and "delete_failed_raster" not in names(gis)
+
+
+def test_a_failed_status_of_another_raster_is_not_ours():
+    rows = {"rasters": [
+        {"id": 76, "layerName": "Autre", "status": "failed", "resort_id": 21},
+        {"id": 77, "layerName": "MNT", "status": "processing", "resort_id": 21},
+    ]}
+    api, _ = logged([resp(200, rows)])
+    assert GisApi(api).raster_status(77) == "processing"
+
+
+def test_a_malformed_start_answer_aborts_nothing(tmp_path):
+    gis = Gis(raster_initiate=[ServerError(200, "Réponse inattendue du serveur ELDA.")])
+    out = Run(tmp_path, gis).go()
+    assert out.status == "failed" and names(gis) == ["raster_initiate"]
+
+
+def test_finalize_without_answer_follows_the_status_instead_of_aborting(tmp_path):
+    gis = Gis(raster_finalize=[NetworkError()], raster_status=["ready"])
+    assert Run(tmp_path, gis).go().status == "published"
+    assert "raster_abort" not in names(gis)
+
+
+def test_a_refused_status_says_so_and_keeps_the_raster(tmp_path):
+    gis = Gis(raster_status=[RequestRefused(403, "Forbidden")])
+    out = Run(tmp_path, gis).go()
+    assert out.status == "timeout" and out.layer_id == RID
+    assert "refuse" in out.message_fr and "Forbidden" not in out.message_fr
+
+
+def test_follow_up_slows_down_after_the_first_minutes(tmp_path):
+    gis = Gis(raster_status=["processing"])
+    run = Run(tmp_path, gis)
+    run.go()
+    late = [s for s, at in zip(run.sleeps, _running_total(run.sleeps)) if at > 400]
+    assert late and min(late) >= 30
+
+
+def _running_total(values):
+    total, out = 0, []
+    for v in values:
+        out.append(total)
+        total += v
+    return out

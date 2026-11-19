@@ -86,5 +86,5 @@ def test_site_layers_reads_the_fields_the_plugin_needs_and_skips_bad_rows():
 
 def test_questions_speak_of_elda_not_of_the_session():
     assert "existe déjà dans ELDA" in texts.choose_duplicate(["Pistes"])
-    assert "existe déjà dans ELDA" in texts.confirm_duplicate(["Pistes"], False)
-    assert "Plusieurs" in texts.confirm_duplicate(["Pistes"], True)
+    assert "existe déjà dans ELDA" in texts.confirm_duplicate(["Pistes"], "busy")
+    assert "Plusieurs" in texts.confirm_duplicate(["Pistes"], "several")

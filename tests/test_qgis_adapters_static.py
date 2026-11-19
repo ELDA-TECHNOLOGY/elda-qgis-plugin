@@ -47,7 +47,7 @@ class QgisAdaptersStaticTest(unittest.TestCase):
             for word in FORBIDDEN:
                 self.assertNotIn(word, source, "%s uses %s" % (path.name, word))
             for root in absolute_imports(tree):
-                self.assertIn(root, {"qgis", "elda_qgis", "__future__", "json", "typing", "dataclasses"}, "%s imports %s" % (path.name, root))
+                self.assertIn(root, {"qgis", "osgeo", "elda_qgis", "__future__", "json", "os", "typing", "dataclasses"}, "%s imports %s" % (path.name, root))
 
     def test_layers_and_export_exist(self):
         for name in ("layers.py", "export.py"):

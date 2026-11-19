@@ -32,5 +32,5 @@ def test_nothing_reported_on_a_first_publish():
 
 
 def test_question_names_the_layers_and_the_consequence():
-    text = texts.confirm_duplicate(["Pistes", "Enneigeurs"], False)
+    text = texts.confirm_duplicate(["Pistes", "Enneigeurs"], "busy")
     assert "« Pistes », « Enneigeurs »" in text and "doublon" in text

@@ -23,10 +23,13 @@ _FLOATS = ("Float32", "Float64")
 NOT_A_FILE = "Seul un fichier GeoTIFF (.tif ou .tiff) enregistré sur ce poste peut être publié."
 EMPTY = "Le fichier du raster est vide ou introuvable."
 TOO_BIG = "Raster trop volumineux : 50 Go maximum."
-NO_CRS = "Ce raster n'a pas de système de coordonnées : définissez-le dans QGIS et enregistrez le fichier avant de le publier."
+NO_CRS = (
+    "Le fichier de ce raster ne contient pas de système de coordonnées. Enregistrez-le avec son système : "
+    "clic droit sur la couche > Exporter > Enregistrer sous…, puis publiez le fichier obtenu."
+)
 NOT_8_BIT = (
-    "Une orthophoto couleur doit être en 8 bits par bande. Convertissez ce raster en 8 bits "
-    "(Raster > Conversion > Convertir, type de sortie Byte), ou choisissez un autre type."
+    "Une orthophoto couleur doit être en 8 bits par bande. Clic droit sur la couche > Exporter > "
+    "Enregistrer sous…, mode de sortie « Image rendue », puis publiez le fichier obtenu ; ou choisissez un autre type."
 )
 NOT_FLOAT = (
     "Pour ce type, ELDA n'accepte que des valeurs à virgule. Convertissez ce raster "

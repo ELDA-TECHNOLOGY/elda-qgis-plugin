@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+from typing import Optional
 
 TITLE = "ELDA"
 LOGIN_TITLE = "Connexion à ELDA"
@@ -68,6 +69,9 @@ TICK_AT_LEAST_ONE = "Cochez au moins une couche."
 MAX_LAYERS = "20 couches au maximum par envoi."
 NO_VECTOR_RIGHT = "Votre compte n'a pas le droit de publier des couches vecteur sur ce site."
 COMING_SOON = "Disponible dans une prochaine version"
+NO_RASTER_RIGHT = "Votre compte n'a pas le droit de publier des rasters sur ce site."
+CHOOSE_RASTER_TYPE = "Choisissez le type de chaque raster coché."
+RASTER_TYPE_PLACEHOLDER = "Type du raster…"
 
 _STATUS = {
     "waiting": "En attente",
@@ -79,6 +83,27 @@ _STATUS = {
     "timeout": "Traitement trop long",
     "unpublished": "Non publiée",
 }
+
+
+def status_samples() -> list:
+    """Every text the status column can show, to size it once for the widest."""
+    return sorted(set(_STATUS.values()) | {status_text("uploading", None), status_text("uploading", 100)})
+
+
+# readable on a light and on a dark QGIS theme
+ERROR_COLOR = "#E5484D"
+OK_COLOR = "#2DA44E"
+
+
+def tone_color(tone: Optional[str]) -> Optional[str]:
+    return {"error": ERROR_COLOR, "ok": OK_COLOR}.get(tone or "")
+
+
+def status_tone(code: str) -> Optional[str]:
+    """How a row status should stand out: "error", "ok", or None for a neutral one."""
+    if code in ("failed", "timeout", "unpublished"):
+        return "error"
+    return "ok" if code == "published" else None
 
 
 def status_text(code: str, percent) -> str:
@@ -117,6 +142,7 @@ WITH_STYLE = "Reprendre le style QGIS"
 WITH_STYLE_HINT = "S'applique aux nouvelles couches. Une couche dont le contenu est remplacé garde son style ELDA."
 CANCEL = "Annuler"
 REFRESH = "Actualiser"
+CHECK_ALL = "Tout cocher"
 SITE_ROOT = "Racine du site"
 UNNAMED_FOLDER = "(sans nom)"
 LOADING = "Chargement…"
@@ -178,23 +204,35 @@ def _already_there(names) -> str:
     return "Une couche du même nom existe déjà dans ELDA, dans ce dossier : %s." % listed
 
 
-def choose_duplicate(names) -> str:
-    return (
+def _rasters_created_again(raster_names) -> str:
+    listed = ", ".join("« %s »" % n for n in raster_names)
+    return "Un raster ne peut pas être remplacé dans ELDA. Publié à nouveau, en plus de l'existant : %s." % listed
+
+
+def choose_duplicate(names, raster_names=()) -> str:
+    text = (
         _already_there(names) + "\n\n"
         "Remplacer le contenu efface toutes les entités de la couche ELDA et les remplace par celles de QGIS. "
         "Les modifications faites dans ELDA seront perdues, et ce remplacement ne peut pas être annulé. "
         "Le nom, le dossier, la visibilité et le style de la couche ELDA sont conservés.\n\n"
         "Créer une nouvelle couche ajoute un doublon dans ELDA."
     )
+    if raster_names:
+        text += "\n\n" + _rasters_created_again(raster_names)
+    return text
 
 
-def confirm_duplicate(names, several: bool) -> str:
-    why = (
-        "Plusieurs couches portent ce nom : le plugin ne peut pas choisir laquelle remplacer."
-        if several
-        else "La couche existante est en cours de traitement ou en échec : son contenu ne peut pas être remplacé."
-    )
-    return "%s\n\n%s\n\nPublier quand même crée un doublon dans ELDA. Continuer ?" % (_already_there(names), why)
+_WHY_NOT_REPLACED = {
+    "several": "Plusieurs couches portent ce nom : le plugin ne peut pas choisir laquelle remplacer.",
+    "busy": "La couche existante est en cours de traitement ou en échec : son contenu ne peut pas être remplacé.",
+}
+
+
+def confirm_duplicate(names, why: str, raster_names=()) -> str:
+    reasons = [_WHY_NOT_REPLACED[why]] if why in _WHY_NOT_REPLACED else []
+    if raster_names:
+        reasons.append(_rasters_created_again(raster_names))
+    return "%s\n\n%s\n\nPublier quand même crée un doublon dans ELDA. Continuer ?" % (_already_there(names), "\n".join(reasons))
 
 
 def visibility_summary(restricted: bool, groups: int, users: int) -> str:

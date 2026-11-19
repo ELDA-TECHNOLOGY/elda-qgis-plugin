@@ -62,3 +62,16 @@ class PublishTextsTest(unittest.TestCase):
         for code, text in expected.items():
             self.assertEqual(texts.status_text(code, None), text)
         self.assertEqual(texts.status_text("uploading", 42), "Envoi… 42 %")
+
+
+def test_only_failures_and_successes_stand_out():
+    assert [texts.status_tone(code) for code in ("failed", "timeout", "unpublished")] == ["error"] * 3
+    assert texts.status_tone("published") == "ok"
+    assert [texts.status_tone(code) for code in ("", "uploading", "processing", "cancelled")] == [None] * 4
+    assert texts.tone_color("error") == texts.ERROR_COLOR and texts.tone_color(None) is None
+
+
+def test_the_status_column_is_sized_for_every_text_it_can_show():
+    samples = texts.status_samples()
+    assert "Traitement par ELDA…" in samples and "Envoi… 100 %" in samples and "Échec" in samples
+    assert all(texts.status_text(code, None) in samples for code in ("published", "failed", "timeout", "uploading"))

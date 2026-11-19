@@ -6,7 +6,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent / "elda_qgis"
 UI = ROOT / "ui"
-NEW_QT = ("publish/panel.py", "publish/folder_picker.py", "publish/visibility_picker.py", "publish/runner.py")
+NEW_QT = ("publish/panel.py", "publish/table.py", "publish/folder_picker.py", "publish/visibility_picker.py", "publish/runner.py")
 QT_FILES = [UI / n for n in ("session/login_dialog.py", "main_dialog.py", "worker.py", "dialogs.py") + NEW_QT] + [ROOT / "plugin.py"]
 ALLOWED = {"qgis", "elda_qgis", "__future__", "typing", "html", "pathlib", "os", "threading", "time", "traceback", "dataclasses"}
 BACKGROUND = ("worker.py", "publish/runner.py")

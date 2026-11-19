@@ -10,33 +10,32 @@ from qgis.core import QgsProject
 from qgis.PyQt import sip
 from qgis.PyQt.QtCore import Qt, QTimer
 from qgis.PyQt.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
+    QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QProgressBar,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from ...core.publish import gpkg, tempfiles, vector
+from ...core.publish import gpkg, raster, raster_checks, tempfiles, vector
 from ...core.session import rights
-from ...core.errors import SessionLost
+from ...core.errors import EldaError, SessionLost
 from ...core.publish.gis import GisApi
 from ...core.net.http import Caller
-from ...qgis_adapters import export, layers, log, style_reader
+from ...qgis_adapters import export, layers, log, raster_file, style_reader
 from ...qgis_adapters.transport import QgisTransport
 from . import runner
 from .. import dialogs, texts, worker
 from . import state as ps
 from .folder_picker import FolderPicker
+from .table import LayerTable
 from .visibility_picker import VisibilityPicker
 
-_CHECK, _NAME, _KIND, _COUNT, _STATUS = range(5)
 _EXPORT_FILE = "layer.gpkg"
 _REPLACE_FILE = "layer.geojson"
 # how long the full bar stays visible once a batch has ended
@@ -53,6 +52,28 @@ def _plain_label() -> QLabel:
     label.setTextFormat(Qt.TextFormat.PlainText)
     label.setWordWrap(True)
     return label
+
+
+class _FittingScroll(QScrollArea):
+    """As tall as its text when there is room, scrollable when the window is too small to show it all."""
+
+    def __init__(self, label: QLabel):
+        super().__init__()
+        label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.setWidget(label)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+
+    def sizeHint(self):
+        return self.widget().sizeHint()
+
+    def minimumSizeHint(self):
+        hint = self.widget().minimumSizeHint()
+        # two lines stay visible however small the window gets
+        hint.setHeight(min(hint.height(), 2 * self.fontMetrics().lineSpacing()))
+        return hint
 
 
 class _Batch:
@@ -87,6 +108,8 @@ class PublishPanel(QWidget):
         self._rows: List[ps.Row] = []
         self._counts = {}
         self._sources = {}
+        # layer key -> what is known of the raster file, read when the table is filled
+        self._rasters = {}
         # what this session published, to warn before a duplicate and offer a replacement
         self._sent = ps.SentLayers()
         # layer ids are saved in project files: a copy of a project must not inherit replace targets
@@ -104,21 +127,13 @@ class PublishPanel(QWidget):
         self._blocked = False
         # the list of existing ELDA layers is being read before a batch starts
         self._checking = False
-        self._filling = False
 
-        self._table = QTableWidget(0, len(texts.column_titles()))
-        self._table.setHorizontalHeaderLabels(texts.column_titles())
-        self._table.verticalHeader().setVisible(False)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(_NAME, QHeaderView.ResizeMode.Stretch)
-        self._table.setMinimumHeight(160)
+        self._table = LayerTable(self._row_checked, self._row_renamed, self._row_raster_type)
         self._refresh = QPushButton(texts.REFRESH)
         self._folder_button = QPushButton()
         self._visibility_button = QPushButton()
         self._publish = QPushButton(texts.PUBLISH)
+        self._check_all = QCheckBox(texts.CHECK_ALL)
         self._with_style = QCheckBox(texts.WITH_STYLE)
         # off by default: an untouched QGIS layer has a random opaque colour that would hide the map
         self._with_style.setChecked(False)
@@ -148,19 +163,22 @@ class PublishPanel(QWidget):
         actions.addWidget(self._publish)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._check_all)
         layout.addWidget(self._table)
         layout.addLayout(target)
         layout.addLayout(actions)
         layout.addWidget(self._progress)
         layout.addWidget(self._hint)
-        layout.addWidget(self._summary)
+        self._summary_area = _FittingScroll(self._summary)
+        layout.addWidget(self._summary_area)
 
-        self._table.itemChanged.connect(self._item_changed)
-        self._refresh.clicked.connect(dialogs.guarded(self._summary.setText, self._reload))
-        self._folder_button.clicked.connect(dialogs.guarded(self._summary.setText, self._pick_folder))
-        self._visibility_button.clicked.connect(dialogs.guarded(self._summary.setText, self._pick_visibility))
-        self._publish.clicked.connect(dialogs.guarded(self._summary.setText, self._start_batch))
-        self._cancel.clicked.connect(dialogs.guarded(self._summary.setText, self.cancel))
+        self._refresh.clicked.connect(dialogs.guarded(self._report_error, self._reload))
+        self._folder_button.clicked.connect(dialogs.guarded(self._report_error, self._pick_folder))
+        self._visibility_button.clicked.connect(dialogs.guarded(self._report_error, self._pick_visibility))
+        self._publish.clicked.connect(dialogs.guarded(self._report_error, self._start_batch))
+        # clicked, not toggled: only the user's own click counts, not the box following the rows
+        self._check_all.clicked.connect(dialogs.guarded(self._report_error, self._all_clicked))
+        self._cancel.clicked.connect(dialogs.guarded(self._report_error, self.cancel))
         self._sync()
 
     # session and table
@@ -198,59 +216,18 @@ class PublishPanel(QWidget):
         project = layers.list_project_layers()
         self._counts = {layer.layer_id: layer.feature_count for layer in project}
         self._sources = {layer.layer_id: layer.source for layer in project}
+        self._rasters = {layer.layer_id: layer.raster for layer in project if layer.kind == "raster"}
         fresh = ps.rows_for(project, rights.of(self._account))
         self._rows = ps.merge_rows(self._rows, fresh, self._edited)
         self._edited &= {row.key for row in self._rows}
         self._fill()
 
     def _fill(self) -> None:
-        self._filling = True
-        try:
-            self._table.setRowCount(len(self._rows))
-            for index, row in enumerate(self._rows):
-                self._fill_row(index, row)
-        finally:
-            self._filling = False
+        self._table.fill(self._rows, self._counts, self._sources, editing=not self.busy)
         self._sync()
 
-    def _fill_row(self, index: int, row: ps.Row) -> None:
-        enabled, selectable = Qt.ItemFlag.ItemIsEnabled, Qt.ItemFlag.ItemIsSelectable
-        check = QTableWidgetItem()
-        check.setCheckState(Qt.CheckState.Checked if row.checked else Qt.CheckState.Unchecked)
-        cells = [
-            check,
-            QTableWidgetItem(row.name),
-            QTableWidgetItem(texts.kind_text(row.kind)),
-            QTableWidgetItem(texts.feature_count(self._counts.get(row.key))),
-            QTableWidgetItem(texts.status_text(row.status, row.percent)),
-        ]
-        if row.selectable:
-            editing = not self.busy
-            check.setFlags((enabled | Qt.ItemFlag.ItemIsUserCheckable) if editing else enabled)
-            cells[_NAME].setFlags((enabled | selectable | Qt.ItemFlag.ItemIsEditable) if editing else (enabled | selectable))
-            for cell in cells[_KIND:]:
-                cell.setFlags(enabled | selectable)
-            cells[_STATUS].setToolTip(texts.plain_tooltip(row.message))
-            cells[_NAME].setToolTip(texts.plain_tooltip(self._sources.get(row.key)))
-        else:
-            # disabled items render greyed; the reason stays readable as a tooltip
-            for cell in cells:
-                cell.setFlags(Qt.ItemFlag.NoItemFlags)
-                cell.setToolTip(texts.plain_tooltip(row.reason))
-        for column, cell in enumerate(cells):
-            self._table.setItem(index, column, cell)
-
     def _render_statuses(self) -> None:
-        self._filling = True
-        try:
-            for index, row in enumerate(self._rows):
-                cell = self._table.item(index, _STATUS)
-                if cell is not None:
-                    cell.setText(texts.status_text(row.status, row.percent))
-                    if row.selectable:
-                        cell.setToolTip(texts.plain_tooltip(row.message))
-        finally:
-            self._filling = False
+        self._table.render_statuses(self._rows)
         self._render_progress()
 
     def _render_progress(self) -> None:
@@ -269,26 +246,27 @@ class PublishPanel(QWidget):
         if not sip.isdeleted(self) and not self.busy:
             self._progress.hide()
 
-    def _item_changed(self, item) -> None:
-        if self._filling or self.busy:
-            return
-        index = item.row()
-        if not 0 <= index < len(self._rows):
-            return
-        key = self._rows[index].key
-        if item.column() == _CHECK:
-            self._rows = ps.set_checked(self._rows, key, item.checkState() == Qt.CheckState.Checked)
-        elif item.column() == _NAME:
-            self._rows = ps.rename(self._rows, key, item.text())
+    def _row_checked(self, key: str, checked: bool) -> None:
+        if not self.busy:
+            self._rows = ps.set_checked(self._rows, key, checked)
+            self._sync()
+
+    def _all_clicked(self) -> None:
+        if not self.busy:
+            self._rows = ps.set_all_checked(self._rows, self._check_all.isChecked())
+            self._fill()
+
+    def _row_renamed(self, key: str, text: str) -> str:
+        if not self.busy:
+            self._rows = ps.rename(self._rows, key, text)
             self._edited.add(key)
-            name = self._rows[index].name
-            if item.text() != name:
-                self._filling = True
-                try:
-                    item.setText(name)
-                finally:
-                    self._filling = False
-        self._sync()
+            self._sync()
+        return next((row.name for row in self._rows if row.key == key), text)
+
+    def _row_raster_type(self, key: str, raster_type: Optional[str]) -> None:
+        if not self.busy:
+            self._rows = ps.set_raster_type(self._rows, key, raster_type)
+            self._sync()
 
     def _sync(self) -> None:
         busy = self.busy
@@ -300,6 +278,8 @@ class PublishPanel(QWidget):
         idle = not busy and not self._blocked and not self._checking
         for widget in (self._refresh, self._with_style, self._folder_button, self._visibility_button):
             widget.setEnabled(idle)
+        self._check_all.setEnabled(idle and any(row.selectable for row in self._rows))
+        self._check_all.setChecked(ps.all_checked(self._rows))
         self._folder_button.setText(self._folder.label())
         self._visibility_button.setText(
             texts.visibility_summary(self._restricted, len(self._group_ids), len(self._user_ids))
@@ -351,6 +331,17 @@ class PublishPanel(QWidget):
         export.cancel_all()
         self._sync()
 
+    def _say(self, text: str, tone: Optional[str] = None) -> None:
+        """Write under the table; an error is coloured and bold so that it cannot be missed."""
+        color = texts.tone_color(tone)
+        self._summary.setStyleSheet("color: %s; font-weight: bold;" % color if color else "")
+        self._summary.setText(text)
+        # the scroll area takes its height from the text: tell the layout it has changed
+        self._summary_area.updateGeometry()
+
+    def _report_error(self, text: str) -> None:
+        self._say(text, "error")
+
     def _alive(self, batch: _Batch) -> bool:
         return not sip.isdeleted(self) and batch is self._batch
 
@@ -367,39 +358,61 @@ class PublishPanel(QWidget):
             return
         scope, gis, site = self._scope(), GisApi(self._api), self._account.active_site_id
         self._checking = True
-        self._summary.setText(texts.CHECKING_EXISTING)
+        self._say(texts.CHECKING_EXISTING)
         self._sync()
 
-        def done(layers) -> None:
-            dialogs.guarded(self._summary.setText, lambda: self._existing_known(scope, gis, layers))()
+        def read_existing():
+            """(layers, rasters) of the site; None for a list this account cannot read.
+
+            Both are always read: the ticks may still change while the answer is on its way.
+            """
+
+            def listed(fetch):
+                try:
+                    return fetch()
+                except SessionLost:
+                    raise
+                except EldaError:
+                    return None
+
+            return listed(lambda: gis.site_layers(site)), listed(lambda: gis.site_rasters(site))
+
+        def done(existing) -> None:
+            layers_found, rasters_found = existing
+
+            def resume() -> None:
+                self._existing_known(scope, gis, layers_found, rasters_found)
+
+            dialogs.guarded(self._report_error, resume)()
 
         def failed(exc: Exception) -> None:
             if isinstance(exc, SessionLost):
                 self._checking = False
-                self._summary.setText("")
+                self._say("")
                 self._sync()
                 self._on_session_lost(exc)
                 return
             # no read right, or no network: fall back on what this session remembers
             log.info("existing layers not read: %s" % type(exc).__name__)
-            done(None)
+            done((None, None))
 
-        worker.run(texts.TASK_LOADING, lambda: gis.site_layers(site), worker.guarded(self, done), worker.guarded(self, failed))
+        worker.run(texts.TASK_LOADING, read_existing, worker.guarded(self, done), worker.guarded(self, failed))
 
-    def _existing_known(self, scope, gis: GisApi, layers) -> None:
+    def _existing_known(self, scope, gis: GisApi, layers, rasters) -> None:
         self._checking = False
-        self._summary.setText("")
+        self._say("")
         self._sync()
         # the login, the site or the ticks may have changed while the list was loading
         if not self._can_start() or self._scope() != scope:
             return
-        plan = ps.duplicate_plan(self._rows, layers, self._folder.folder_id, self._sent.known(scope))
+        plan = ps.duplicate_plan(self._rows, layers, self._folder.folder_id, self._sent.known(scope), rasters)
         replace = {}
-        if plan.names and plan.targets is None:
-            if not dialogs.confirm(self, texts.confirm_duplicate(plan.names, plan.several)):
+        if plan.names and not plan.targets:
+            if not dialogs.confirm(self, texts.confirm_duplicate(plan.names, plan.why, plan.raster_names)):
                 return
         elif plan.names:
-            choice = dialogs.choose(self, texts.choose_duplicate(plan.names), [texts.REPLACE_CONTENT, texts.CREATE_NEW])
+            text = texts.choose_duplicate(plan.names, plan.raster_names)
+            choice = dialogs.choose(self, text, [texts.REPLACE_CONTENT, texts.CREATE_NEW])
             if choice < 0:
                 return
             replace = plan.targets if choice == 0 else {}
@@ -414,7 +427,7 @@ class PublishPanel(QWidget):
         batch.signals.ask_slow.connect(lambda question: self._on_ask_slow(batch, question), type=queued)
         self._batch = batch
         self._rows = ps.mark_waiting(self._rows)
-        self._summary.setText("")
+        self._say("")
         self._busy_changed()
         self._safely(batch, self._next, batch, ps.next_waiting(self._rows))
 
@@ -445,6 +458,10 @@ class PublishPanel(QWidget):
         batch.current = key
         self._rows = ps.update_row(self._rows, key, lambda r: ps.apply_step(r, vector.INITIATE, 0, 0))
         self._render_statuses()
+        row = next(r for r in self._rows if r.key == key)
+        if row.kind == "raster":
+            self._send_raster(batch, row)
+            return
         try:
             folder = tempfiles.temp_dir()
         except OSError as exc:
@@ -469,6 +486,20 @@ class PublishPanel(QWidget):
             self._export_failed(batch, key, folder, message)
 
         export.export_layer(key, path, done, failed, as_geojson=replacing)
+
+    def _send_raster(self, batch: _Batch, row: ps.Row) -> None:
+        """A raster is sent as it is: no export, but a check first, since ELDA rejects many files after the upload."""
+        listed = self._rasters.get(row.key)
+        # read the file itself, now: what QGIS shows (a CRS set on the layer, a scaled type) is not what ELDA gets
+        info = raster_file.read(listed.path) if listed is not None and listed.path else None
+        problem = raster_checks.problem(info, row.raster_type) if info is not None else raster_checks.NOT_A_FILE
+        if problem is not None:
+            self._rows = ps.fail_row(self._rows, row.key, problem)
+            self._row_done(batch, row.key)
+            return
+        job = raster.RasterJob(row.key, info.path, row.name, row.raster_type, batch.folder_id, batch.users, batch.groups)
+        # no temporary folder to clean: the file sent is the user's own
+        runner.start(job, batch.gis, batch.caller, batch.cancel, "", batch.signals)
 
     def _export_looks_complete(self, key: str, path: str) -> bool:
         """False when QGIS wrote no feature for a layer that has some: such a file must never be published."""
@@ -554,5 +585,6 @@ class PublishPanel(QWidget):
 
     def _end_batch(self) -> None:
         self._batch = None
-        self._summary.setText(ps.summary(self._rows))
+        failed = any(texts.status_tone(row.status) == "error" for row in self._rows)
+        self._say(ps.summary(self._rows), "error" if failed else None)
         self._busy_changed()

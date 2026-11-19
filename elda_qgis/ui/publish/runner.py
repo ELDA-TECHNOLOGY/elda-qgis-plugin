@@ -8,7 +8,7 @@ from typing import Optional, Set
 from qgis.core import QgsApplication, QgsTask
 from qgis.PyQt.QtCore import QObject, pyqtSignal
 
-from ...core.publish import tempfiles, vector
+from ...core.publish import raster, tempfiles, vector
 from ...core.publish.gis import GisApi
 from ...core.net.http import Caller
 from .. import texts
@@ -85,7 +85,9 @@ class PublishTask(QgsTask):
     def run(self) -> bool:
         self._ran = True
         try:
-            outcome = vector.publish_vector(
+            # a raster goes as it is; a vector layer was exported to the temporary folder first
+            publish = raster.publish_raster if isinstance(self._job, raster.RasterJob) else vector.publish_vector
+            outcome = publish(
                 self._job,
                 self._gis,
                 self._caller,

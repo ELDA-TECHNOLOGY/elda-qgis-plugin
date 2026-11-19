@@ -19,7 +19,11 @@ _BAD_FILE = "Le fichier du raster est introuvable ou vide."
 _CANCELLED = "Import annulé."
 _STILL_PROCESSING = "Import interrompu : le raster est toujours en cours de traitement dans ELDA."
 _TIMEOUT = "Le traitement par ELDA prend trop de temps. Vérifiez le raster dans ELDA plus tard."
+_NO_STATUS = "ELDA refuse l'accès à l'état du raster. Vérifiez-le dans ELDA."
 _GONE = "Le raster n'existe plus dans ELDA."
+# the conversion takes minutes: after the first ones, ask less often (each request lists the whole site)
+_SLOW_AFTER_SECONDS = 300
+_SLOW_WAIT_SECONDS = 30
 _FAILED = "Le traitement par ELDA a échoué."
 _NOT_REMOVED = " Le raster en échec n'a pas pu être supprimé."
 _UNEXPECTED = "L'envoi a échoué pour une raison inattendue."
@@ -65,7 +69,7 @@ def _follow(job: RasterJob, gis: GisApi, raster_id: int, is_cancelled, sleep, cl
             raise
         except RequestRefused:
             # a refusal will not change: the import goes on, only its follow-up stops
-            return Outcome(job.key, "timeout", raster_id, _TIMEOUT)
+            return Outcome(job.key, "timeout", raster_id, _NO_STATUS)
         except EldaError:
             status = "processing"  # a single failed poll must not fail the import
         if status is None:
@@ -81,9 +85,10 @@ def _follow(job: RasterJob, gis: GisApi, raster_id: int, is_cancelled, sleep, cl
             except EldaError:
                 message += _NOT_REMOVED
             return Outcome(job.key, "failed", raster_id, message)
-        if clock() - start >= MAX_WAIT_SECONDS:
+        elapsed = clock() - start
+        if elapsed >= MAX_WAIT_SECONDS:
             return Outcome(job.key, "timeout", raster_id, _TIMEOUT)
-        sleep(wait)
+        sleep(max(wait, _SLOW_WAIT_SECONDS) if elapsed > _SLOW_AFTER_SECONDS else wait)
     raise AssertionError("unreachable")
 
 
